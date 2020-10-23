@@ -1,0 +1,326 @@
+import findspark
+findspark.init('/home/ubuntu/spark-2.1.1-bin-hadoop2.7')
+import pyspark
+from pyspark.sql import SparkSession
+spark = SparkSession.builder.appName('722-I4').getOrCreate()
+
+DS = spark.read.load("./DepressionScale.csv",format="csv",header="true")
+PI = spark.read.load("./PersonInformation.csv",format="csv",header="true")
+
+DS.columns
+DS.show()
+DS.describe().show()
+print((DS.count(), len(DS.columns)))
+DS.printSchema()
+
+PI.head(1)
+PI.columns
+PI.show()
+PI.describe().show()
+print((PI.count(), len(PI.columns)))
+PI.printSchema()
+PI.select('major').show()
+
+from pyspark.sql.functions import countDistinct, avg, stddev
+PI.select(countDistinct("country").alias("Distinct country")).show()
+
+from pyspark import SparkContext
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import *
+DS.select([count(when(isnull(c), c)).alias(c) for c in DS.columns]).show()
+PI.select([count(when(isnull(c), c)).alias(c) for c in PI.columns]).show()
+
+Target = DS.select('PersonID','TotalA','TotalE')
+Target.show()
+
+Predictors = PI.select('PersonID','education','urban','gender','engnat','age','hand',
+        'religion','orientation','race','voted','married','familysize')
+Predictors.show()
+
+Target_2 = Target.na.drop()
+Predictors_2 = Predictors.na.drop()
+
+print((Target_2 .count(), len(Target_2 .columns)))
+print((Predictors_2.count(), len(Predictors_2.columns)))
+
+Target_2.printSchema()
+from pyspark.sql.functions import col
+Target_2 = Target_2.select(*(col(c).cast("integer").alias(c) for c in Target_2.columns))
+
+cols = ['education','urban','gender','engnat','age','hand',
+        'religion','orientation','race','voted','married','familysize']
+bounds = {}
+for col in cols:
+    quantiles = Predictors_2.approxQuantile(col, [0.25, 0.75], 0.05)
+    IQR = quantiles[1] - quantiles[0]
+    bounds[col] = [quantiles[0]-1.5*IQR, quantiles[1]+1.5*IQR]
+bounds
+Predictors_2_outliers = Predictors_2.select( "*",
+    *[
+    (
+        (Predictors_2[c] < bounds[c][0])|
+        (Predictors_2[c] > bounds[c][1])
+    ).alias(c+'_o') for c in cols
+])
+Predictors_2_outliers.show()
+
+Predictors_2_outliers.printSchema()
+
+from pyspark.sql.functions import col
+Predictors_2_outliers = Predictors_2_outliers.select(*(col(c).cast("string").alias(c) for c in Predictors_2_outliers.columns))
+
+Predictors_2.printSchema()
+Predictors_2 = Predictors_2.select(*(col(c).cast("integer").alias(c) for c in Predictors_2.columns))
+
+Target_2.printSchema()
+Predictors_2.printSchema()
+
+#Outliers
+
+cols = ['TotalA', 'TotalE']
+bounds = {}
+for col in cols:
+    quantiles = Target_2.approxQuantile(col, [0.25, 0.75], 0.05)
+    IQR = quantiles[1] - quantiles[0]
+    bounds[col] = [quantiles[0]-1.5*IQR, quantiles[1]+1.5*IQR]
+bounds
+Target_2_outliers = Target_2.select( "*",
+    *[
+    (
+        (Target_2[c] < bounds[c][0])|
+        (Target_2[c] > bounds[c][1])
+    ).alias(c+'_o') for c in cols
+])
+Target_2_outliers.show()
+Target_2_outliers.printSchema()
+
+from pyspark.sql.types import StringType
+Target_2_outliers = Target_2_outliers.withColumn("TotalA_o", Target_2_outliers["TotalA_o"].cast(StringType()))
+Target_2_outliers = Target_2_outliers.withColumn("TotalE_o", Target_2_outliers["TotalE_o"].cast(StringType()))
+
+from pyspark.sql.functions import col
+Target_2_outliers = Target_2_outliers.select(*(col(c).cast("string").alias(c) for c in Target_2_outliers.columns))
+Target_2_outliers.printSchema()
+
+Target_3 = Target_2_outliers.filter((Target_2_outliers['TotalA_o'] == 'false') & (Target_2_outliers['TotalE_o'] == 'false')).select('PersonID','TotalA','TotalE')
+Target_3.show()
+
+Target_3 = Target_3.select(*(col(c).cast("integer").alias(c) for c in Target3.columns))
+Target_3.printSchema()
+
+print((Target_2_outliers.count(), len(Target_2_outliers.columns)))
+print((Target_3.count(), len(Target_3.columns)))
+
+Target_2_outliers = Target_2_outliers.select(*(col(c).cast("string").alias(c) for c in Target_2_outliers.columns))
+Target_3 = Target_2_outliers.select(*(col(c).cast("integer").alias(c) for c in Target_2_outliers.columns))
+Target_3.printSchema()
+
+cols = ['age','familysize']
+bounds = {}
+for col in cols:
+    quantiles = Predictors_2.approxQuantile(col, [0.25, 0.75], 0.05)
+    IQR = quantiles[1] - quantiles[0]
+    bounds[col] = [quantiles[0]-1.5*IQR, quantiles[1]+1.5*IQR]
+bounds
+Predictors_2_outliers = Predictors_2.select( "*",
+    *[
+    (
+        (Predictors_2[c] < bounds[c][0])|
+        (Predictors_2[c] > bounds[c][1])
+    ).alias(c+'_o') for c in cols
+])
+Predictors_2_outliers.show()
+
+Predictors_2_outliers.printSchema()
+from pyspark.sql.functions import col
+Predictors_2_outliers = Predictors_2_outliers.select(*(col(c).cast("string").alias(c) for c in Predictors_2_outliers.columns))
+
+Predictors_2_outliers.printSchema()
+
+Predictors_3 = Predictors_2_outliers.filter((Predictors_2_outliers['age_o'] == 'false')
+                                           & (Predictors_2_outliers['familysize_o'] == 'false')
+        ).select('PersonID','education','urban','gender','engnat','age','hand',
+        'religion','orientation','race','voted','married','familysize')
+Predictors_3.show()
+
+print((Target_3 .count(), len(Target_3 .columns)))
+print((Predictors_3.count(), len(Predictors_3.columns)))
+
+Predictors_4 = Predictors_3.filter((Predictors_3['education'] != 0)
+                                    & (Predictors_3['urban'] != 0)
+                                    & (Predictors_3['gender'] != 0)
+                                    & (Predictors_3['engnat'] != 0)
+                                    & (Predictors_3['hand'] != 0)
+                                    & (Predictors_3['religion'] != 0)
+                                    & (Predictors_3['orientation'] != 0)
+                                    & (Predictors_3['race'] != 0)
+                                    & (Predictors_3['voted'] != 0)
+                                    & (Predictors_3['married'] != 0)
+                                   & (Predictors_3['familysize'] != 0)
+        ).select('PersonID','education','urban','gender','engnat','age','hand',
+        'religion','orientation','race','voted','married','familysize')
+Predictors_4.show()
+print((Predictors_4.count(), len(Predictors_4.columns)))
+
+Target_4 = Target_3.drop("TotalE")
+Target_4.show()
+
+InputData = Target_4.join(Predictors_4, on=['PersonID'])
+InputData.show()
+print((InputData.count(), len(InputData.columns)))
+InputData.printSchema()
+InputData = InputData.select(*(col(c).cast("integer").alias(c) for c in InputData.columns))
+InputData.printSchema()
+InputData.toPandas().to_csv('InputData.csv')
+
+#VectorAssembler
+
+from pyspark.ml.linalg import Vectors
+from pyspark.ml.feature import VectorAssembler
+assembler = VectorAssembler(
+    inputCols=['education','urban','gender','engnat','age','hand',
+        'religion','orientation','race','voted','married','familysize'],
+    outputCol="features")
+output = assembler.transform(InputData)
+InputData_2 = output.select('TotalA','features')
+InputData_2.show()
+print((InputData_2.count(), len(InputData_2.columns)))
+InputData.printSchema()
+
+#PCA
+from pyspark.ml.feature import PCA
+from pyspark.ml.linalg import Vectors
+pca = PCA(k=1, inputCol='features', outputCol='PCA_Value')
+model = pca.fit(InputData_2)
+PCA = model.transform(InputData_2).select('TotalA','PCA_Value')
+PCA.show()
+
+import pyspark.sql.functions as f
+from pyspark.sql.types import FloatType
+PCA=f.udf(lambda v:float(v[0]),FloatType())
+result.withColumn("pcaFeatures", PCA("pcaFeatures")).show()
+
+import pyspark.sql.functions as f
+from pyspark.sql.types import FloatType
+changetype=f.udf(lambda v:float(v[0]),FloatType())
+PCA=PCA.withColumn("PCA_Value", changetype("PCA_Value"))
+PCA.show()
+PCA.printSchema()
+
+from pyspark.ml.clustering import KMeans
+kmeans = KMeans().setK(3).setSeed(1)
+model = kmeans.fit(InputData_2)
+wssse = model.computeCost(InputData_2)
+print("Within Set Sum of Squared Errors = " + str(wssse))
+
+from pyspark.ml.clustering import KMeans
+kmeans = KMeans().setK(6).setSeed(1)
+model = kmeans.fit(InputData_2)
+wssse = model.computeCost(InputData_2)
+print("Within Set Sum of Squared Errors = " + str(wssse))
+
+centers = model.clusterCenters()
+print("Cluster Centers: ")
+for center in centers:
+    print(center)
+
+
+from pyspark.ml.feature import PCA
+from pyspark.ml.linalg import Vectors
+pca = PCA(k=1, inputCol='features', outputCol='PCA_Value')
+model = pca.fit(InputData_2)
+PCA = model.transform(InputData_2).select('PersonID','TotalA','PCA_Value')
+
+from pyspark.ml.clustering import KMeans
+kmeans = KMeans(k=6, seed=1)
+model = kmeans.fit(InputData_2.select('features'))
+
+transformed = model.transform(InputData_2).select("features", "prediction")
+transformed.show()
+transformed.groupby(transformed.prediction).count().show()
+Cluster4=transformed.filter(transformed.prediction == 4)
+Cluster4.show() 
+dimensionality = 12
+Cluster1_2 = Cluster1.drop('prediction').rdd.map(lambda x: [float(x[0][i]) for i in range(dimensionality)]).toDF(schema=['x'+str(i) for i in range(dimensionality)])
+Cluster1_2.show()
+Cluster4_2 = Cluster4.drop('prediction').rdd.map(lambda x: [float(x[0][i]) for i in range(dimensionality)]).toDF(schema=['x'+str(i) for i in range(dimensionality)])
+Cluster4_2.show()
+Cluster1_2.describe().show()
+Cluster4_2.describe().show()
+Cluster1_2.toPandas().to_csv('Cluster1_2.csv')
+Cluster4_2.toPandas().to_csv('Cluster4_2.csv')
+
+from pyspark.ml.clustering import KMeans
+kmeans = KMeans().setK(6).setSeed(1)
+model = kmeans.fit(InputData_2)
+wssse = model.computeCost(InputData_2)
+print("Within Set Sum of Squared Errors = " + str(wssse))
+
+centers = model.clusterCenters()
+print("Cluster Centers: ")
+for center in centers:
+    print(center)
+
+#Regression
+InputData_3 = InputData_2.drop("PersonID")
+InputData_3.show()
+train_data_1,test_data_1 = InputData_3.randomSplit([0.7,0.3])
+train_data_1.describe().show()
+test_data_1.describe().show()
+
+from pyspark.ml.regression import LinearRegression
+lr = LinearRegression(labelCol='TotalA')
+lrModel_1 = lr.fit(train_data_1)
+test_results = lrModel_1.evaluate(test_data_1)
+print("RSME: {}".format(test_results.rootMeanSquaredError))
+
+train_data_2,test_data_2 = InputData_3.randomSplit([0.8,0.2])
+train_data_2.describe().show()
+test_data_2.describe().show()
+lrModel_2 = lr.fit(train_data_2)
+
+test_results = lrModel_1.evaluate(test_data_2)
+print("RSME: {}".format(test_results.rootMeanSquaredError))
+
+from pyspark.ml.regression import LinearRegression
+lr = LinearRegression(labelCol='TotalA')
+lrModelV1 = lr.fit(train_data_1)
+print("Coefficients: {} Intercept: {}".format(lrModelV1.coefficients,lrModelV1.intercept))
+
+test_results = lrModelV1.evaluate(test_data_1)
+test_results.residuals.show()
+print("RSME: {}".format(test_results.rootMeanSquaredError))
+print("R2: {}".format(test_results.r2))
+print("R2: {}".format(test_results.r2))
+
+#lrModelV2
+from pyspark.ml.linalg import Vectors
+from pyspark.ml.feature import VectorAssembler
+assembler = VectorAssembler(
+    inputCols=['gender','age','hand','familysize'],
+    outputCol="features")
+output = assembler.transform(InputData)
+dfIrModelV2 = output.select('TotalA','features')
+dfIrModelV2.show()
+print((dfIrModelV2.count(), len(dfIrModelV2.columns)))
+dfIrModelV2.printSchema()
+
+train_dataV2,test_dataV2 = dfIrModelV2.randomSplit([0.7,0.3])
+train_dataV2.describe().show()
+test_dataV2.describe().show()
+
+from pyspark.ml.regression import LinearRegression
+lr = LinearRegression(labelCol='TotalA')
+lrModelV2 = lr.fit(train_dataV2)
+print("Coefficients: {} Intercept: {}".format(lrModelV2.coefficients,lrModelV2.intercept))
+
+test_results = lrModelV2.evaluate(test_dataV2)
+test_results.residuals.show()
+print("RSME: {}".format(test_results.rootMeanSquaredError))
+print("R2: {}".format(test_results.r2))
+
+from pyspark.ml.regression import GeneralizedLinearRegression
+summary = lrModelV1.summary
+print("P Values lrModelV1: " + str(summary.pValues))
+summary = lrModelV2.summary
+print("P Values lrModelV1: " + str(summary.pValues))
